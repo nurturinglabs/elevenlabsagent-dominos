@@ -226,7 +226,7 @@ export function OrderAnalytics() {
                 <Tooltip
                   contentStyle={{ borderRadius: "6px", border: "1px solid #e5e7eb", fontSize: "11px", padding: "6px 10px" }}
                   cursor={{ fill: "#f9fafb" }}
-                  formatter={(value: number, name: string) => [name === "revenue" ? `₹${value.toLocaleString("en-IN")}` : value, name === "revenue" ? "Revenue" : "Orders"]}
+                  formatter={(value?: number, name?: string) => [name === "revenue" ? `₹${(value ?? 0).toLocaleString("en-IN")}` : (value ?? 0), name === "revenue" ? "Revenue" : "Orders"]}
                 />
                 <Bar dataKey="revenue" fill={BLUE} name="revenue" radius={[3, 3, 0, 0]} />
               </BarChart>
