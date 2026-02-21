@@ -7,7 +7,6 @@ import { VoiceAgent } from "../components/VoiceAgent";
 import { Cart } from "../components/Cart";
 import { PizzaTracker } from "../components/PizzaTracker";
 import { MenuSection } from "../components/MenuSection";
-import { FDENotes } from "../components/FDENotes";
 import { CartItem } from "@/lib/types";
 import { ShoppingCart, Mic, UtensilsCrossed } from "lucide-react";
 
@@ -70,6 +69,13 @@ export default function DemoPage() {
     []
   );
 
+  const handleDeliveryTypeSet = useCallback(
+    (type: "delivery" | "pickup") => {
+      setDeliveryType(type);
+    },
+    []
+  );
+
   const handleOrderConfirmed = useCallback(
     (orderId: string, estimatedTime: string, orderTotal: number) => {
       setOrderConfirmed({ orderId, estimatedTime, total: orderTotal });
@@ -77,42 +83,13 @@ export default function DemoPage() {
     []
   );
 
-  const handlePlaceOrder = useCallback(async () => {
-    if (cartItems.length === 0) return;
-    try {
-      const res = await fetch("/api/order/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: cartItems.map((i) => ({
-            name: i.name,
-            size: i.size,
-            crust: i.crust,
-            extra_toppings: i.extra_toppings,
-            quantity: i.quantity,
-          })),
-          delivery_type: deliveryType,
-        }),
-      });
-      const data = await res.json();
-      if (data.order_id) {
-        setOrderConfirmed({
-          orderId: data.order_id,
-          estimatedTime: data.estimated_delivery,
-          total: data.total,
-        });
-      }
-    } catch (error) {
-      console.error("Failed to place order:", error);
-    }
-  }, [cartItems, deliveryType]);
-
   const cartOrTracker = orderConfirmed ? (
     <PizzaTracker
       orderId={orderConfirmed.orderId}
       estimatedTime={orderConfirmed.estimatedTime}
       total={orderConfirmed.total}
       items={cartItems}
+      deliveryType={deliveryType}
     />
   ) : (
     <Cart
@@ -122,36 +99,31 @@ export default function DemoPage() {
       deliveryFee={deliveryFee}
       total={total}
       offerBanner={offerBanner}
-      onPlaceOrder={handlePlaceOrder}
     />
   );
 
   return (
     <div className="h-screen flex flex-col bg-dominos-light">
-      <Header
-        deliveryType={deliveryType}
-        onToggleDelivery={setDeliveryType}
-      />
+      <Header />
       <OfferBanner />
 
       {/* DESKTOP */}
       <main className="hidden lg:flex flex-1 overflow-hidden">
-        <div className="w-[400px] shrink-0 border-r border-dominos-border overflow-y-auto bg-white/50">
-          <div className="p-4 space-y-4">
+        {/* Left sidebar: Voice Agent + Your Order */}
+        <div className="w-[420px] shrink-0 border-r border-dominos-border overflow-y-auto flex flex-col">
+          <div className="flex-1 flex flex-col p-4 gap-4">
             <VoiceAgent
               onCartUpdate={handleCartUpdate}
               onHighlightItem={handleHighlightItem}
               onOfferApplied={handleOfferApplied}
               onOrderConfirmed={handleOrderConfirmed}
+              onDeliveryTypeSet={handleDeliveryTypeSet}
             />
             {cartOrTracker}
-            <FDENotes />
-            <p className="text-center text-xs text-dominos-medium py-2">
-              Built by Umesh — ElevenLabs FDE Portfolio Project
-            </p>
           </div>
         </div>
 
+        {/* Right: Menu */}
         <div className="flex-1 overflow-y-auto">
           <div className="p-6">
             <MenuSection highlightedItemId={highlightedItemId} />
@@ -169,6 +141,7 @@ export default function DemoPage() {
                 onHighlightItem={handleHighlightItem}
                 onOfferApplied={handleOfferApplied}
                 onOrderConfirmed={handleOrderConfirmed}
+                onDeliveryTypeSet={handleDeliveryTypeSet}
               />
             </div>
           )}
@@ -180,9 +153,6 @@ export default function DemoPage() {
           {mobileTab === "cart" && (
             <div className="p-4">
               {cartOrTracker}
-              <div className="mt-4">
-                <FDENotes />
-              </div>
             </div>
           )}
         </div>

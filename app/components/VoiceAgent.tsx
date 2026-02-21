@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useConversation } from "@elevenlabs/react";
-import { Mic, MicOff, PhoneOff } from "lucide-react";
-import { Transcript, TranscriptMessage } from "./Transcript";
+import { Mic, MicOff, PhoneOff, Phone } from "lucide-react";
 import { CartItem } from "@/lib/types";
 
 interface VoiceAgentProps {
@@ -11,6 +10,7 @@ interface VoiceAgentProps {
   onHighlightItem: (itemId: string) => void;
   onOfferApplied: (offerName: string, discount: number) => void;
   onOrderConfirmed: (orderId: string, estimatedTime: string, total: number) => void;
+  onDeliveryTypeSet: (type: "delivery" | "pickup") => void;
 }
 
 export function VoiceAgent({
@@ -18,40 +18,56 @@ export function VoiceAgent({
   onHighlightItem,
   onOfferApplied,
   onOrderConfirmed,
+  onDeliveryTypeSet,
 }: VoiceAgentProps) {
-  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
+  const [callDuration, setCallDuration] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
 
   const conversation = useConversation({
     onConnect: () => {
-      setMessages([]);
+      setCallDuration(0);
+      timerRef.current = setInterval(() => {
+        setCallDuration((prev) => prev + 1);
+      }, 1000);
     },
-    onMessage: (message: { source: string; message: string }) => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: message.source === "ai" ? "agent" : "user",
-          message: message.message,
-          timestamp: new Date(),
-        },
-      ]);
+    onDisconnect: () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     },
     onError: (error: unknown) => {
       console.error("Conversation error:", error);
     },
     clientTools: {
       update_cart: (params: Record<string, unknown>) => {
+        console.log("update_cart raw params:", JSON.stringify(params, null, 2));
         try {
-          const items = typeof params.items === "string" ? JSON.parse(params.items) : params.items || [];
+          let items: unknown = params.items;
+          // Handle string JSON
+          if (typeof items === "string") {
+            items = JSON.parse(items);
+          }
+          // If items is still not an array, try parsing the entire params as the cart
+          if (!Array.isArray(items)) {
+            // Maybe the agent sent a single item or the whole payload differently
+            if (params.name || params.menu_id) {
+              // Single item sent as flat params
+              items = [params];
+            } else {
+              items = [];
+            }
+          }
           onCartUpdate(
-            items,
+            items as CartItem[],
             Number(params.subtotal || 0),
             Number(params.gst || 0),
             Number(params.delivery_fee || 0),
             Number(params.total || 0)
           );
-        } catch {
-          console.error("Failed to parse cart update");
+        } catch (e) {
+          console.error("Failed to parse cart update:", e, "params:", params);
         }
         return "Cart updated on screen";
       },
@@ -66,6 +82,11 @@ export function VoiceAgent({
         );
         return "Offer animation shown to customer";
       },
+      set_delivery_type: (params: Record<string, unknown>) => {
+        const type = String(params.delivery_type || "delivery") as "delivery" | "pickup";
+        onDeliveryTypeSet(type);
+        return `Delivery type set to ${type}`;
+      },
       show_order_confirmed: (params: Record<string, unknown>) => {
         onOrderConfirmed(
           String(params.order_id || ""),
@@ -76,6 +97,13 @@ export function VoiceAgent({
       },
     },
   });
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   const handleStart = useCallback(async () => {
     if (!agentId || agentId === "your_agent_id_here") {
@@ -97,78 +125,148 @@ export function VoiceAgent({
   const isConnected = conversation.status === "connected";
   const isConnecting = conversation.status === "connecting";
   const isSpeaking = conversation.isSpeaking;
-  const notConfigured = !agentId || agentId === "your_agent_id_here";
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-dominos-border p-5">
-      <h2 className="text-sm font-bold text-dominos-blue uppercase tracking-wide mb-4">
-        Voice Ordering
-      </h2>
-
-      {/* Orb */}
-      <div className="flex flex-col items-center gap-3 py-4">
-        <div
-          className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
-            isConnected
-              ? isSpeaking
-                ? "bg-dominos-red scale-110 animate-pulse-blue"
-                : "bg-dominos-blue animate-glow-blue"
-              : isConnecting
-              ? "bg-dominos-blue/60 animate-pulse"
-              : "bg-gray-200"
-          }`}
-        >
-          <Mic className={`w-8 h-8 ${isConnected || isConnecting ? "text-white" : "text-gray-400"}`} />
+    <div className="bg-[#1a1a2e] rounded-xl overflow-hidden">
+      {/* Compact call header */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        {/* Domino's avatar */}
+        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shrink-0">
+          <div className="grid grid-cols-2 gap-[2px]">
+            <div className="w-2 h-2 rounded-[2px] bg-dominos-red" />
+            <div className="w-2 h-2 rounded-[2px] bg-dominos-blue" />
+            <div className="w-2 h-2 rounded-[2px] bg-dominos-blue" />
+            <div className="w-2 h-2 rounded-[2px] bg-dominos-red" />
+          </div>
         </div>
-        <p className="text-xs font-medium text-dominos-medium">
-          {notConfigured
-            ? "Configure Agent ID"
-            : isConnecting
-            ? "Connecting..."
-            : isConnected && isSpeaking
-            ? "Speaking..."
-            : isConnected
-            ? "Listening..."
-            : "Tap to start ordering"}
-        </p>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-white text-sm font-bold">Domino&apos;s Pizza</h2>
+          <p className="text-white/40 text-xs">Koramangala, Bengaluru</p>
+        </div>
+        {/* Call status */}
+        <div className="shrink-0">
+          {isConnected ? (
+            <span className="text-green-400 text-xs font-mono">{formatTime(callDuration)}</span>
+          ) : isConnecting ? (
+            <span className="text-yellow-400 text-xs animate-pulse">Calling...</span>
+          ) : null}
+        </div>
       </div>
 
-      {/* Controls */}
-      <div className="flex gap-2 justify-center mb-4">
+      {/* Orb + status (only when connected or connecting) */}
+      {(isConnected || isConnecting) && (
+        <div className="flex flex-col items-center py-3">
+          <div className="relative">
+            {isConnected && (
+              <>
+                <div
+                  className={`absolute inset-0 rounded-full ${isSpeaking ? "bg-dominos-red/20" : "bg-dominos-blue/20"}`}
+                  style={{ animation: "callPulse 2s ease-out infinite" }}
+                />
+                <div
+                  className={`absolute inset-0 rounded-full ${isSpeaking ? "bg-dominos-red/10" : "bg-dominos-blue/10"}`}
+                  style={{ animation: "callPulse 2s ease-out infinite 0.5s" }}
+                />
+              </>
+            )}
+            <div
+              className={`relative w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 ${
+                isConnected
+                  ? isSpeaking
+                    ? "bg-dominos-red shadow-[0_0_20px_rgba(227,24,55,0.4)]"
+                    : "bg-dominos-blue shadow-[0_0_20px_rgba(0,100,145,0.4)]"
+                  : "bg-white/20"
+              }`}
+            >
+              {isConnected && isSpeaking ? (
+                <div className="flex items-center gap-[2px]">
+                  {[...Array(5)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-[2px] bg-white rounded-full"
+                      style={{ animation: `soundBar 0.8s ease-in-out infinite ${i * 0.1}s`, height: "8px" }}
+                    />
+                  ))}
+                </div>
+              ) : isConnected ? (
+                <Mic className="w-6 h-6 text-white" />
+              ) : (
+                <Phone className="w-5 h-5 text-white animate-pulse" />
+              )}
+            </div>
+          </div>
+          <p className="text-white/40 text-[11px] mt-2">
+            {isSpeaking ? "Speaking..." : isConnected ? "Listening..." : "Connecting..."}
+          </p>
+        </div>
+      )}
+
+      {/* Call controls */}
+      <div className="px-4 py-3 flex justify-center">
         {!isConnected ? (
           <button
             onClick={handleStart}
-            disabled={isConnecting || notConfigured}
-            className="bg-dominos-red hover:bg-red-700 disabled:bg-gray-300 text-white font-bold text-sm px-6 py-2.5 rounded-full flex items-center gap-2 transition-colors"
+            disabled={isConnecting}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg ${
+              isConnecting
+                ? "bg-yellow-500/80 shadow-yellow-500/20"
+                : "bg-green-500 hover:bg-green-600 shadow-green-500/30"
+            } disabled:bg-gray-600 disabled:shadow-none`}
           >
-            <Mic className="w-4 h-4" />
-            {isConnecting ? "Connecting..." : "Start Order"}
+            <Phone className="w-5 h-5 text-white" />
           </button>
         ) : (
-          <>
-            <button
-              onClick={handleStop}
-              className="bg-gray-700 hover:bg-gray-800 text-white font-bold text-sm px-5 py-2.5 rounded-full flex items-center gap-2 transition-colors"
-            >
-              <PhoneOff className="w-4 h-4" />
-              End
-            </button>
+          <div className="flex items-center gap-6">
             <button
               onClick={() => {}}
-              className="w-10 h-10 rounded-full border-2 border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors"
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                conversation.micMuted ? "bg-white/20" : "bg-white/10 hover:bg-white/20"
+              }`}
             >
               {conversation.micMuted ? (
-                <MicOff className="w-4 h-4 text-gray-500" />
+                <MicOff className="w-4 h-4 text-white" />
               ) : (
-                <Mic className="w-4 h-4 text-dominos-blue" />
+                <Mic className="w-4 h-4 text-white" />
               )}
             </button>
-          </>
+            <button
+              onClick={handleStop}
+              className="w-12 h-12 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors shadow-lg shadow-red-600/30"
+            >
+              <PhoneOff className="w-5 h-5 text-white" />
+            </button>
+            <button className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M11 5L6 9H2v6h4l5 4V5z" />
+              </svg>
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Transcript */}
-      <Transcript messages={messages} isListening={isConnected && !isSpeaking} />
+      {/* Not connected placeholder */}
+      {!isConnected && !isConnecting && (
+        <p className="text-center text-white/25 text-xs pb-3">
+          Tap to call and place your order
+        </p>
+      )}
+
+      <style jsx>{`
+        @keyframes callPulse {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+        @keyframes soundBar {
+          0%, 100% { height: 4px; }
+          50% { height: 16px; }
+        }
+      `}</style>
     </div>
   );
 }

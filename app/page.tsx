@@ -58,13 +58,13 @@ export default function LandingPage() {
                 Try the Demo
                 <ArrowRight className="w-5 h-5" />
               </Link>
-              <a
-                href="#how-it-works"
-                className="inline-flex items-center gap-2 px-6 py-3 text-dominos-medium font-semibold hover:text-dominos-dark transition-colors"
+              <Link
+                href="/analytics"
+                className="inline-flex items-center gap-2 px-6 py-3 text-dominos-medium font-semibold border border-gray-200 rounded-full hover:border-dominos-blue hover:text-dominos-blue transition-colors"
               >
-                See how it works
+                Analytics
                 <ChevronRight className="w-4 h-4" />
-              </a>
+              </Link>
             </div>
           </div>
 
