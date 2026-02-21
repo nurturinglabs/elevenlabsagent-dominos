@@ -17,7 +17,9 @@ export async function POST(req: NextRequest) {
 
   if (typeof items === "string") {
     try {
-      items = JSON.parse(items);
+      // ElevenLabs agent sometimes sends Python-style single quotes
+      const cleaned = items.replace(/'/g, '"');
+      items = JSON.parse(cleaned);
     } catch {
       return NextResponse.json({ error: "Invalid items JSON" }, { status: 400 });
     }
