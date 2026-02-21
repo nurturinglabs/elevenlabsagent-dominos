@@ -2,8 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { findItemByName, crusts, vegToppings, nonVegToppings } from "@/lib/menu-data";
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const itemName = body.item_name;
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    console.error("[item-details] Failed to parse request body");
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  console.log("[item-details] Received:", JSON.stringify(body));
+
+  const itemName = body.item_name || body.itemName || body.name || "";
 
   if (!itemName) {
     return NextResponse.json({ error: "item_name required" }, { status: 400 });

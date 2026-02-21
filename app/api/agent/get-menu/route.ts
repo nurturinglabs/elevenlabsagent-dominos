@@ -2,8 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMenuByCategory } from "@/lib/menu-data";
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const category = body.category || "all";
+  let body = {};
+  try {
+    body = await req.json();
+  } catch {
+    // Empty body is fine for get-menu
+  }
+
+  console.log("[get-menu] Received:", JSON.stringify(body));
+
+  const category = (body as Record<string, string>).category || "all";
 
   if (category === "all") {
     const menu = {

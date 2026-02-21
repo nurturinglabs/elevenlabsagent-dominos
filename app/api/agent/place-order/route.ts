@@ -2,9 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { calculateOrder } from "@/lib/price-calculator";
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    console.error("[place-order] Failed to parse request body");
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  console.log("[place-order] Received:", JSON.stringify(body));
+
   let items = body.items;
-  const deliveryType = body.delivery_type || "delivery";
+  const deliveryType = body.delivery_type || body.deliveryType || "delivery";
   const address = body.address || "Koramangala 5th Block, Bangalore";
 
   if (typeof items === "string") {
@@ -15,8 +24,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // If no items array, try to build one from the body itself
   if (!items || !Array.isArray(items)) {
-    return NextResponse.json({ error: "items array required" }, { status: 400 });
+    if (body.name || body.item_name) {
+      items = [{
+        name: body.name || body.item_name,
+        size: body.size || "medium",
+        quantity: body.quantity || 1,
+      }];
+    } else {
+      return NextResponse.json({ error: "items array required" }, { status: 400 });
+    }
   }
 
   const summary = calculateOrder(items, deliveryType);
